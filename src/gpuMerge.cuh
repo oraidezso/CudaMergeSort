@@ -9,5 +9,6 @@
 #define GPUMERGE_H_
 
 void gpuMergeSort(float *data, unsigned size);
+bool findCudaDevice();
 
 #endif /* GPUMERGE_H_ */
