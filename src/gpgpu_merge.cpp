@@ -27,11 +27,11 @@ void initialize(float *data, unsigned size, const bool ordered)
 bool valid(float *std, float *cpu, float *gpu, unsigned size)
 {
 	std::cout<<'\n';
-	//for (unsigned i = 0; i < size; ++i)std::cout<<std[i]<<' '<<cpu[i]<<'\n';
+	//for (unsigned i = 0; i < size; ++i)std::cout<<std[i]<<' '<<gpu[i]<<' '<<cpu[i]<<'\n';
 	for (unsigned i = 0; i < size; ++i)
 		if (
 				std[i] != cpu[i]
-				//|| std[i] != gpu[i]
+				|| std[i] != gpu[i]
 			) return false;
 	return true;
 
@@ -42,7 +42,7 @@ bool test(const int WORK_SIZE,const bool ordered, double &cpuTime,double &gpuTim
 	float *cpuSort = new float[WORK_SIZE];
 	initialize(cpuSort, WORK_SIZE, ordered);
 	float *gpuSort = new float[WORK_SIZE];
-	//std::copy(cpuSort,cpuSort + WORK_SIZE, gpuSort);
+	std::copy(cpuSort,cpuSort + WORK_SIZE, gpuSort);
 	float *stdSort = new float[WORK_SIZE];
 	std::copy(cpuSort,cpuSort + WORK_SIZE, stdSort);
 	float *stdSSort = new float[WORK_SIZE];
@@ -58,9 +58,9 @@ bool test(const int WORK_SIZE,const bool ordered, double &cpuTime,double &gpuTim
 	cpuTime = difftime(t2,t1);
 
 	/* Measure gpu time */
-	//t1 = clock();
-	//gpuMergeSort(gpuSort, WORK_SIZE);
-	//t2 = clock();
+	t1 = clock();
+	gpuMergeSort(gpuSort, WORK_SIZE);
+	t2 = clock();
 	gpuTime = difftime(t2,t1);
 
 	/* Measure std time */
@@ -97,8 +97,6 @@ int main()
 
 	double cpuTime,gpuTime,stdSTime,stdTime;
 
-	//test(15,cpuTime,gpuTime,stdTime);
-	//std::cout<<"cpu: "<<cpuTime<<", gpu: "<<gpuTime<<" std: "<<stdTime<<'\n';
 	double sumc=0,sums=0;
 	for(unsigned i=1000;i<10000;i+=1000){
 		std::cout<<i<<'\n';

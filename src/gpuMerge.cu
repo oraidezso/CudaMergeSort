@@ -12,15 +12,40 @@ static void CheckCudaErrorAux (const char *, unsigned, const char *, cudaError_t
 #define MIN_RUNTIME_VERSION 1000
 #define MIN_COMPUTE_VERSION 0x10
 int MaxThread = 512;
+int BlockSize=2,CoreInBlock=128;
 
 /**
  * CUDA kernel that sorts a float array
  */
-__global__ void gpuMergeSortKernel(float *data, unsigned vectorSize) {
+
+
+__global__ void merge1(float *akt, float *next, float *end, int length){
 	unsigned idx = blockIdx.x*blockDim.x+threadIdx.x;
-	if (idx < vectorSize)
-		data[idx] = 1.0/data[idx];
+	float *l=akt+idx*length*2;
+	float *r=akt+idx*length*2+length;
+	float *to=next+idx*length*2;
+	float *lend=(r<end) ? r : end;
+	float *rend=(r+length <end) ? r+length : end;
+
+	while(true){
+		if(l==lend){
+			while(r<rend){
+				*to++=*r++;
+			}
+			break;
+		}
+		if(r>=rend){
+			while(l<lend){
+				*to++=*l++;
+			}
+			break;
+		}
+		*to++ = (*l < *r) ? *l++ : *r++;
+	}
 }
+
+
+
 
 /**
  * Host function that copies the data and launches the work on GPU
@@ -28,16 +53,29 @@ __global__ void gpuMergeSortKernel(float *data, unsigned vectorSize) {
 void gpuMergeSort(float *data, unsigned size)
 {
 	float *gpuData;
-
 	CUDA_CHECK_RETURN(cudaMalloc((void **)&gpuData, sizeof(float)*size));
 	CUDA_CHECK_RETURN(cudaMemcpy(gpuData, data, sizeof(float)*size, cudaMemcpyHostToDevice));
+	float *tmp;
+	CUDA_CHECK_RETURN(cudaMalloc((void **)&tmp, sizeof(float)*size));
+	float *akt=gpuData;
+	float *next=tmp;
 
 	static const int BLOCK_SIZE = MaxThread;
-	const int blockCount = (size+BLOCK_SIZE-1)/BLOCK_SIZE;
-	gpuMergeSortKernel<<<blockCount, BLOCK_SIZE>>> (gpuData, size);
 
-	CUDA_CHECK_RETURN(cudaMemcpy(data, gpuData, sizeof(float)*size, cudaMemcpyDeviceToHost));
+	for (unsigned length = 1; length < size; length *= 2){
+		float *end=akt+size;
+		int blockCount=((size+BLOCK_SIZE-1)/(BLOCK_SIZE*2*length))+1;
+		for(unsigned col = 0; col< size; col+=2*length){
+			merge1<<<blockCount,BLOCK_SIZE>>>(akt, next, end, length);
+		}
+		float *c = akt;
+		akt=next;
+		next=c;
+	}
+
+	CUDA_CHECK_RETURN(cudaMemcpy(data, akt, sizeof(float)*size, cudaMemcpyDeviceToHost));
 	CUDA_CHECK_RETURN(cudaFree(gpuData));
+	CUDA_CHECK_RETURN(cudaFree(tmp));
 }
 
 
@@ -54,7 +92,35 @@ static void CheckCudaErrorAux (const char *file, unsigned line, const char *stat
 }
 
 
-
+int getSPcores(cudaDeviceProp devProp)
+{
+    int cores = 0;
+    switch (devProp.major){
+     case 2: // Fermi
+      if (devProp.minor == 1) cores = 48;
+      else cores = 32;
+      break;
+     case 3: // Kepler
+      cores = 192;
+      break;
+     case 5: // Maxwell
+      cores = 128;
+      break;
+     case 6: // Pascal
+      if (devProp.minor == 1) cores = 128;
+      else if (devProp.minor == 0) cores = 64;
+      else printf("Unknown device type\n");
+      break;
+     case 7: // Volta
+      if (devProp.minor == 0) cores = 64;
+      else printf("Unknown device type\n");
+      break;
+     default:
+      printf("Unknown device type\n");
+      break;
+      }
+    return cores;
+}
 bool findCudaDevice(){
 	int deviceCount, bestDev=-1;
 	CUDA_CHECK_RETURN(cudaGetDeviceCount(&deviceCount));
@@ -70,10 +136,15 @@ bool findCudaDevice(){
             {
                 bestDev = dev;
                 MaxThread = deviceProp.maxThreadsPerBlock;
+                BlockSize=deviceProp.multiProcessorCount;
+                CoreInBlock=getSPcores(deviceProp);
+                if(CoreInBlock==0)return false;
             }
         }
     }
+    if(bestDev != -1)cudaSetDevice(bestDev);
     return bestDev != -1;
 }
+
 
 
