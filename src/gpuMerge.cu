@@ -12,7 +12,7 @@ static void CheckCudaErrorAux (const char *, unsigned, const char *, cudaError_t
 #define MIN_RUNTIME_VERSION 1000
 #define MIN_COMPUTE_VERSION 0x10
 int MaxThread = 512;
-int BlockSize=2,CoreInBlock=128;
+int BlockNum=2,CoreInBlock=128;
 
 /**
  * CUDA kernel that sorts a float array
@@ -91,7 +91,9 @@ static void CheckCudaErrorAux (const char *file, unsigned line, const char *stat
 	exit (1);
 }
 
-
+/**
+ * Get core/sm for optimalization purposes
+ */
 int getSPcores(cudaDeviceProp devProp)
 {
     int cores = 0;
@@ -121,6 +123,7 @@ int getSPcores(cudaDeviceProp devProp)
       }
     return cores;
 }
+
 bool findCudaDevice(){
 	int deviceCount, bestDev=-1;
 	CUDA_CHECK_RETURN(cudaGetDeviceCount(&deviceCount));
@@ -136,7 +139,7 @@ bool findCudaDevice(){
             {
                 bestDev = dev;
                 MaxThread = deviceProp.maxThreadsPerBlock;
-                BlockSize=deviceProp.multiProcessorCount;
+                BlockNum=deviceProp.multiProcessorCount;
                 CoreInBlock=getSPcores(deviceProp);
                 if(CoreInBlock==0)return false;
             }
