@@ -7,6 +7,7 @@
 
 #include "gpuMerge.cuh"
 #include <iostream>
+#include <stdio.h>
 static void CheckCudaErrorAux (const char *, unsigned, const char *, cudaError_t);
 #define CUDA_CHECK_RETURN(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
 #define MIN_RUNTIME_VERSION 1000
@@ -95,6 +96,8 @@ __device__ void kernelMerge(float *l, float *r, float *to, float *end, int lengt
 	unsigned idx = blockIdx.x*blockDim.x+threadIdx.x;
 	float *tmp = tmpIn + (idx * size);
 	float *akt = data + (idx * size);
+	// The size of the last section is diferent so we have to check it
+	if(data+fullSize > akt) size = (data + fullSize) - akt
 	float *next = tmp;
 
 	for (; length < size; length *= 2){
@@ -106,7 +109,7 @@ __device__ void kernelMerge(float *l, float *r, float *to, float *end, int lengt
 		akt=next;
 		next=c;
 	}
-	if(akt!=data)for(unsigned i=0;i<size;++i)data[i]=akt[i];
+	if(akt != data+(idx*size))for(unsigned i=0;i<size;++i)data[i]=akt[i];
 
 }
 
@@ -133,10 +136,11 @@ void gpuMergeSort(float *data, unsigned size)
 	int arraySizeInBlock = CoreInBlock*BlockNum;
 
 	gpuKernelMergeSort<<<BlockNum,CoreInBlock>>>(gpuData, tmp, size, arraySizeInBlock);
-	//gpuKernelMergeSort<<<1,1>>>(gpuData, tmp, size, size, arraySizeInBlock);
+	gpuKernelMergeSort<<<1,1>>>(gpuData, tmp, size, size, arraySizeInBlock);
 
 	CUDA_CHECK_RETURN(cudaMemcpy(data, gpuData, sizeof(float)*size, cudaMemcpyDeviceToHost));
-	cpuMergeSort(data,size,arraySizeInBlock);
+	
+	//cpuMergeSort(data,size,arraySizeInBlock);
 
 	CUDA_CHECK_RETURN(cudaFree(gpuData));
 	CUDA_CHECK_RETURN(cudaFree(tmp));
