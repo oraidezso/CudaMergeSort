@@ -97,7 +97,7 @@ __device__ void kernelMerge(float *l, float *r, float *to, float *end, int lengt
 	float *tmp = tmpIn + (idx * size);
 	float *akt = data + (idx * size);
 	// The size of the last section is diferent so we have to check it
-	if(data+fullSize > akt) size = (data + fullSize) - akt
+	if(data+fullSize > akt) size = (data + fullSize) - akt;
 	float *next = tmp;
 
 	for (; length < size; length *= 2){
