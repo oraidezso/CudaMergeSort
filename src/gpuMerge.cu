@@ -14,16 +14,10 @@ static void CheckCudaErrorAux (const char *, unsigned, const char *, cudaError_t
 int MaxThread = 512;
 int BlockNum=2,CoreInBlock=128;
 
-/**
- * CUDA kernel that sorts a float array
- */
 
 
-__global__ void merge1(float *akt, float *next, float *end, int length){
-	unsigned idx = blockIdx.x*blockDim.x+threadIdx.x;
-	float *l=akt+idx*length*2;
-	float *r=akt+idx*length*2+length;
-	float *to=next+idx*length*2;
+void cmerge(float *l, float *r, float *to, float *end, int length){
+	//int length = r - l;
 	float *lend=(r<end) ? r : end;
 	float *rend=(r+length <end) ? r+length : end;
 
@@ -44,6 +38,80 @@ __global__ void merge1(float *akt, float *next, float *end, int length){
 	}
 }
 
+void cpuMergeSort(float *data, unsigned int size, int length=1)
+{
+	float *tmp = new float[size];
+	float *akt = data;
+	float *next = tmp;
+
+	for (; length < size; length *= 2){
+		float *end=akt+size;
+		for(unsigned col = 0; col< size; col+=2*length){
+			cmerge(akt + col, akt + col + length, next + col, end, length);
+		}
+		float *c = akt;
+		akt=next;
+		next=c;
+	}
+	if(akt!=data)for(unsigned i=0;i<size;++i)data[i]=akt[i];
+
+	delete[] tmp;
+}
+
+
+
+
+/**
+ * CUDA kernel what merges two float arrays
+ */
+
+__device__ void kernelMerge(float *l, float *r, float *to, float *end, int length){
+	float *lend=(r<end) ? r : end;
+	float *rend=(r+length <end) ? r+length : end;
+
+	while(true){
+		if(l==lend){
+			while(r<rend){
+				*to++=*r++;
+			}
+			break;
+		}
+		if(r>=rend){
+			while(l<lend){
+				*to++=*l++;
+			}
+			break;
+		}
+		*to++ = (*l < *r) ? *l++ : *r++;
+	}
+}
+
+/**
+ * CUDA kernel that sorts a float array
+ */
+
+ __global__ void gpuKernelMergeSort(float *data, float *tmpIn, unsigned int fullSize, unsigned int size, unsigned int length=1)
+{
+	unsigned idx = blockIdx.x*blockDim.x+threadIdx.x;
+	float *tmp = tmpIn + (idx * size);
+	float *akt = data + (idx * size);
+	float *next = tmp;
+
+	for (; length < size; length *= 2){
+		float *end=akt+size;
+		for(unsigned col = 0; col< size; col+=2*length){
+			kernelMerge(akt + col, akt + col + length, next + col, end, length);
+		}
+		float *c = akt;
+		akt=next;
+		next=c;
+	}
+	if(akt!=data)for(unsigned i=0;i<size;++i)data[i]=akt[i];
+
+}
+
+
+
 
 
 
@@ -52,30 +120,27 @@ __global__ void merge1(float *akt, float *next, float *end, int length){
  */
 void gpuMergeSort(float *data, unsigned size)
 {
+	if(size < CoreInBlock*BlockNum*4){
+		cpuMergeSort(data,size);
+		return;
+	}
 	float *gpuData;
 	CUDA_CHECK_RETURN(cudaMalloc((void **)&gpuData, sizeof(float)*size));
 	CUDA_CHECK_RETURN(cudaMemcpy(gpuData, data, sizeof(float)*size, cudaMemcpyHostToDevice));
 	float *tmp;
 	CUDA_CHECK_RETURN(cudaMalloc((void **)&tmp, sizeof(float)*size));
-	float *akt=gpuData;
-	float *next=tmp;
 
-	static const int BLOCK_SIZE = MaxThread;
+	int arraySizeInBlock = CoreInBlock*BlockNum;
 
-	for (unsigned length = 1; length < size; length *= 2){
-		float *end=akt+size;
-		int blockCount=((size+BLOCK_SIZE-1)/(BLOCK_SIZE*2*length))+1;
-		for(unsigned col = 0; col< size; col+=2*length){
-			merge1<<<blockCount,BLOCK_SIZE>>>(akt, next, end, length);
-		}
-		float *c = akt;
-		akt=next;
-		next=c;
-	}
+	gpuKernelMergeSort<<<BlockNum,CoreInBlock>>>(gpuData, tmp, size, arraySizeInBlock);
+	//gpuKernelMergeSort<<<1,1>>>(gpuData, tmp, size, size, arraySizeInBlock);
 
-	CUDA_CHECK_RETURN(cudaMemcpy(data, akt, sizeof(float)*size, cudaMemcpyDeviceToHost));
+	CUDA_CHECK_RETURN(cudaMemcpy(data, gpuData, sizeof(float)*size, cudaMemcpyDeviceToHost));
+	cpuMergeSort(data,size,arraySizeInBlock);
+
 	CUDA_CHECK_RETURN(cudaFree(gpuData));
 	CUDA_CHECK_RETURN(cudaFree(tmp));
+
 }
 
 

@@ -98,7 +98,7 @@ int main()
 	double cpuTime,gpuTime,stdSTime,stdTime;
 
 	double sumc=0,sums=0;
-	for(unsigned i=1000;i<10000;i+=1000){
+	for(unsigned i=1000;i<100000;i+=1000){
 		std::cout<<i<<'\n';
 		std::cout<<test(i,true,cpuTime,gpuTime,stdTime,stdSTime)<<'\n';
 		std::cout<<"cpu: "<<cpuTime<<", gpu: "<<gpuTime<<" std: "<<stdTime<<" stableStd: "<<stdSTime<<'\n';
